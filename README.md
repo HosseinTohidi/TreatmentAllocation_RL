@@ -1,0 +1,2 @@
+# TreatmentAllocation_RL
+To develop a RL method for solving a treatment allocation in a multi-arm clinical trial such that the accidental bias between arms are minimized. Accidental bias means any imbalance between the covariates of the patients (such as age, sex, weight, stage of the disease, etc) allocated to trial's arms and it is measured by wasserstein distance between marginal distribution of each covariate.
