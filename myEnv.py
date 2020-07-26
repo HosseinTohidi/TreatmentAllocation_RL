@@ -9,6 +9,23 @@ from scipy.stats import wasserstein_distance as wd
 from itertools import combinations 
 import itertools
 
+def extend_state(state, true_ws):
+    extended_state = []
+    for batch in range(batch_size):
+        v = myEnv.find_strata(true_ws[batch], thresholds)
+        extended_state.append(list(state[batch].flatten()).extend(v))
+    return extended_state
+def new_arrivals(batch_size, thresholds):
+    """
+    return the covariates of new arrival (for each batch): 
+           true_ws -> a list of size batch_size X len(threshold)     
+    """
+    true_ws = []
+    for batch in range(batch_size):
+        true_ws.append([np.random.choice(thresholds[cov],1)[0] for cov in range(len(thresholds))])
+    return true_ws
+        
+
 def find_distance(*argv):
     total_distance = 0
     for i1,i2 in combinations(np.arange(len(argv[0])),2):
@@ -127,7 +144,7 @@ if __name__ == '__main__':
                   [10,20,30],
                   [-5,-3,-1,0,1,3,5]] 
     num_strata= np.sum([len(thresholds[i]) for i in range(len(thresholds))])
-    batch_size = 1
+    batch_size = 2
     #initial_state = np.zeros([batch_size, num_strata, arms]) 
     
     trueW = []        
