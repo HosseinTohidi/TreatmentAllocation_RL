@@ -9,12 +9,14 @@ from scipy.stats import wasserstein_distance as wd
 from itertools import combinations 
 import itertools
 
-def extend_state(state, true_ws):
+def extend_state(state, true_ws, thresholds):
     extended_state = []
-    for batch in range(batch_size):
-        v = myEnv.find_strata(true_ws[batch], thresholds)
-        extended_state.append(list(state[batch].flatten()).extend(v))
+    for batch in range(len(true_ws)):
+        flat_state = list(state[batch].flatten())
+        flat_state.extend(find_strata(true_ws[batch], thresholds))
+        extended_state.append(flat_state)
     return extended_state
+
 def new_arrivals(batch_size, thresholds):
     """
     return the covariates of new arrival (for each batch): 
@@ -87,6 +89,7 @@ class trialEnv(object):
                  num_covs,
                  num_arms,
                  max_time,
+                 thresholds,
                  terminal_signal = False
                  ):
         self.state = state 
@@ -97,13 +100,15 @@ class trialEnv(object):
         self.num_covs = num_covs
         self.num_arms = num_arms
         self.max_time = max_time
+        self.thresholds = thresholds
         self.terminal_signal = terminal_signal
 
     def reset(self):
-        self.state = np.zeros([batch_size, num_strata, arms])
+        self.state = np.zeros([self.batch_size, self.num_strata, self.num_arms])
         self.clock = 0
         self.assignment = [{(cov,arm):[] for (cov, arm) in list(itertools.product(np.arange(self.num_covs), np.arange(self.num_arms)))} for batch in range(self.batch_size)]
-
+        self.terminal_signal = False
+        
         return self.state     
             
     def find_reward(self):
@@ -112,11 +117,11 @@ class trialEnv(object):
         else:
            return np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
         
-    def step(self, actions, true_ws): # actions : batch_size X arms
+    def step(self, actions, true_ws): # actions : 1 X batch_size 
         #translate actions to num_strata X 
-        for batch in range(batch_size):
-            idx = actions[batch].index(1)
-            self.state[batch,:,idx] += np.array(find_strata(true_ws[batch],thresholds))
+        for batch in range(self.batch_size):
+            #idx = actions[batch].index(1)
+            self.state[batch,:,actions[batch]] += np.array(find_strata(true_ws[batch],self.thresholds))
             
         # update the clock and check for the end of the season
         self.clock += 1
@@ -126,7 +131,7 @@ class trialEnv(object):
         # update the asssignment
         for batch in range(self.batch_size):
             for cov in range(self.num_covs):
-                self.assignment[batch][(cov, actions[batch].index(1))].append(true_ws[batch][cov])    
+                self.assignment[batch][(cov, actions[batch])].append(true_ws[batch][cov])    
         
         
             
@@ -166,6 +171,9 @@ if __name__ == '__main__':
                    )
     env.reset()
     
+    
+    
+    ### note: I changed the def of actions from 0,1,0,... to the index of 1 in each batch
     actions=[[1,0],[0,1],[1,0]]
     true_ws =[[1,13,25,0],[1,16,25,0],[0,16,25,0]]
     new_state, new_reward, terminal_signal = env.step(actions,true_ws)
