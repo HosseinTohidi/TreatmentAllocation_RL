@@ -8,6 +8,10 @@ import numpy as np
 from scipy.stats import wasserstein_distance as wd
 from itertools import combinations 
 import itertools
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
 
 def extend_state(state, true_ws, thresholds):
     extended_state = []
@@ -32,7 +36,7 @@ def find_distance(*argv):
     total_distance = 0
     for i1,i2 in combinations(np.arange(len(argv[0])),2):
         if len(argv[0][i1]) ==0 or len(argv[0][i2])==0:        
-            total_distance += np.inf
+            total_distance += 100 #np.inf
         else:
             total_distance += wd(argv[0][i1],argv[0][i2])
     return total_distance
@@ -115,7 +119,9 @@ class trialEnv(object):
         if self.clock < self.max_time:
            return np.zeros(self.batch_size)
         else:
-           return np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
+           temp_reward =  np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
+           ballance_reward = np.array([self.state[batch].sum(axis =0).max() - self.state[batch].sum(axis =0).min() for batch in range(self.batch_size)])
+           return -1 * (temp_reward + ballance_reward/self.num_covs)
         
     def step(self, actions, true_ws): # actions : 1 X batch_size 
         #translate actions to num_strata X 
@@ -136,6 +142,48 @@ class trialEnv(object):
         
             
         return self.state, self.find_reward(), self.terminal_signal
+
+
+def myPlot(A, trueW, arms, figure_name="myPlt"):
+    plt.close()
+    sol = {}
+    for arm in range(arms):
+        sol[arm] = []
+    for i in range(len(A)):
+        idx = A[i].index(1)
+        sol[idx].append(trueW[i])
+    covs = len(trueW[0])    
+    pltColors = ['g','k','b','r','y']
+    for cov in range(covs):
+        plt.subplot(covs,1,cov+1)
+        for arm in range(arms):
+            cov_values = np.array(sol[arm])[:,cov]
+            sns.distplot(cov_values, hist=False,color= pltColors[arm])
+    plt.savefig(f'{figure_name}.PNG')
+
+
+
+
+def find_wd(true_ws, A, plot= False, figure_name='myPlt'):
+    num_arms = len(A[0])
+    num_covs = len(true_ws[0][0])
+    sol = [[] for i in range(num_arms)]
+    for i in range(len(A)):
+        idx = A[i].index(1)
+        sol[idx].append(true_ws[i][0])
+    total_dist = 0
+    for cov in range(num_covs):
+        total_dist += find_distance([np.array(sol[arm])[:,cov] for arm in range(num_arms)])
+    total_dist += np.array(A).sum(axis = 0).max() - np.array(A).sum(axis = 0).min()
+    if plot:
+        myPlot(A, np.array(true_ws)[:,0,:], num_arms, figure_name)  
+    return total_dist
+
+
+
+
+
+
 
 
 # state represents the number of patients in each strata (|J_1|+|J_2|+...|J_covs|) in aech arm  
