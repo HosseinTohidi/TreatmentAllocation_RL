@@ -120,8 +120,8 @@ class trialEnv(object):
            return np.zeros(self.batch_size)
         else:
            temp_reward =  np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
-           ballance_reward = np.array([self.state[batch].sum(axis =0).max() - self.state[batch].sum(axis =0).min() for batch in range(self.batch_size)])
-           return -1 * (temp_reward + ballance_reward/self.num_covs)
+           #temp_reward += np.array([self.state[batch].sum(axis =0).max() - self.state[batch].sum(axis =0).min() for batch in range(self.batch_size)])/self.num_covs
+           return -1 * temp_reward #
         
     def step(self, actions, true_ws): # actions : 1 X batch_size 
         #translate actions to num_strata X 
@@ -159,6 +159,7 @@ def myPlot(A, trueW, arms, figure_name="myPlt"):
         for arm in range(arms):
             cov_values = np.array(sol[arm])[:,cov]
             sns.distplot(cov_values, hist=False,color= pltColors[arm])
+    plt.tight_layout()
     plt.savefig(f'{figure_name}.PNG')
 
 
@@ -174,7 +175,7 @@ def find_wd(true_ws, A, plot= False, figure_name='myPlt'):
     total_dist = 0
     for cov in range(num_covs):
         total_dist += find_distance([np.array(sol[arm])[:,cov] for arm in range(num_arms)])
-    total_dist += np.array(A).sum(axis = 0).max() - np.array(A).sum(axis = 0).min()
+   # total_dist += np.array(A).sum(axis = 0).max() - np.array(A).sum(axis = 0).min()
     if plot:
         myPlot(A, np.array(true_ws)[:,0,:], num_arms, figure_name)  
     return total_dist

@@ -26,7 +26,6 @@ import random_assignment as r_a
 
 
 
-
 device = torch.device('cuda' if torch.cuda.is_available() and args.use_gpu else 'cpu', 0) #args.gpu_num)
 parser = argparse.ArgumentParser(description='PyTorch REINFORCE example')
 parser.add_argument('--entropy_coef', type=float, default=0.01, help='entropy term coefficient (default: 0.01)')
@@ -37,14 +36,14 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='i
 parser.add_argument("--use_gpu", type=bool, default=True)
 parser.add_argument("--gpu_num", type=int, default=3)
 parser.add_argument("--batchSize", type=int, default=2, help='number of episodes at each training step')
-parser.add_argument('--actor_lr', type=float, default=0.001, help='entropy term coefficient (default: 0.01)')
-parser.add_argument('--critic_lr', type=float, default=0.001, help='entropy term coefficient (default: 0.01)')
+parser.add_argument('--actor_lr', type=float, default=0.0001, help='entropy term coefficient (default: 0.01)')
+parser.add_argument('--critic_lr', type=float, default=0.0001, help='entropy term coefficient (default: 0.01)')
 parser.add_argument('--method', type=str, default='fc', help='fc | att')
 args, unknown = parser.parse_known_args()
 
-batch_size = 30 #args.batchSize
+batch_size = 10 #args.batchSize
 num_arms = 3
-N = 99
+N = 60
 #thresholds = [[0,1],
 #              [5,10,15,20,40],
 #              [10,20,30],
@@ -130,7 +129,7 @@ def select_action(extended_state, variance=1, temp=1):
     m = Categorical(probs)
     action = m.sample()
     log_prob = m.log_prob(action)
-    # entropy = - torch.sum(torch.log(prob) * prob, axis=-1)
+    #entropy = - torch.sum(torch.log(probs) * probs, axis=-1)
     entropy = -torch.sum(m.logits* m.probs, axis=-1)
     return action.to('cpu').numpy(), log_prob, entropy
 
@@ -148,10 +147,6 @@ def rollout(env):
         log_probs.append(log_prob)
         entropies.append(entropy)
         state, reward, done = env.step(action,true_ws)
-#        print(env.state)
-#        print(reward)
-#        print(env.assignment)
-#        print(true_ws)
         rewards.append(reward)
         if done:
             break
@@ -184,7 +179,7 @@ def train(states, rewards, log_probs, entropies):
 
     actor_loss = -torch.mean(((rewards_path - value.detach()) * log_probs_paths)  - \
                              args.entropy_coef * entropy_loss
-                             )
+                             ) #
     actor_optim.zero_grad()
     actor_loss.backward()
     actor_optim.step()
@@ -250,12 +245,12 @@ plt.plot(actor_weights, label = 'actor norm')
 plt.plot(critic_weights, label = 'critic norm')
 plt.legend()
 
-temp1 = np.array(rws)
-temp2 = temp1[temp1 >= -10] 
-plt.plot(temp2, 'b-', label = 'rewards')
-plt.plot(np.array(torchMean), 'r-' ,label = 'critic value')
+plt.plot(rws[:150000], 'b-', label = 'rewards')
+#plt.plot(np.array(torchMean), 'r-' ,label = 'critic value')
 plt.xlabel('episodes')
+plt.xticks(np.arange(0,150000+25000,25000))
 plt.legend()
+plt.savefig('reward.PNG')
 
 def simulate_optimal_RL_policy(true_ws, batch_size, num_strata, num_arms, N, thresholds, plot = False):
     new_env = myEnv.trialEnv(state = [],
@@ -274,7 +269,7 @@ def simulate_optimal_RL_policy(true_ws, batch_size, num_strata, num_arms, N, thr
     A = []
     while True:  
         extended_state = myEnv.extend_state(state, true_ws[counter], thresholds)
-        action, log_prob = select_action(extended_state) # select an action
+        action, log_prob,_ = select_action(extended_state) # select an action
         assign = [1 if action[0] == ii else 0 for ii in range(num_arms)]
         A.append(assign)
         state, reward, done = new_env.step(action, true_ws[counter])
@@ -288,25 +283,33 @@ def simulate_optimal_RL_policy(true_ws, batch_size, num_strata, num_arms, N, thr
 
 
 
-# run simulation for batchsize = 1 and fixed true_ws
-batch_size_sim = 1    
-true_ws = []
-for i in range(N):
-    true_ws.append(myEnv.new_arrivals(batch_size_sim, thresholds)) # generate new arrivals
-    
-# run simulate_optimal_RL_policy
-new_env, reward_RL = simulate_optimal_RL_policy(true_ws, batch_size_sim, num_strata,num_arms, N, thresholds, True)
+def create_sample_test_all(N, thresholds,num_arms,num_strata,Gurobi_timeLimit = 1000, plot = True, num_sample = 1 ):
+    sol = []
+    for sample in range(num_sample):    
+        # run simulation for batchsize = 1 and fixed true_ws
+        batch_size_sim = 1    
+        true_ws = []
+        for i in range(N):
+            true_ws.append(myEnv.new_arrivals(batch_size_sim, thresholds)) # generate new arrivals           
+        # run simulate_optimal_RL_policy
+        new_env, reward_RL = simulate_optimal_RL_policy(true_ws, batch_size_sim, num_strata,num_arms, N, thresholds, plot= plot)
+        
+        # run heuristics (extended_pocock)
+        A_pocock, r_pocock = pocock.main_pocock(true_ws, num_arms, thresholds, N, plot = plot)
+        
+        # exact method (batch arrival)
+        #A_gurobi, r_gurobi = g_a.gurobi_assignment(true_ws, num_arms,  len(thresholds), N, timeLimit= Gurobi_timeLimit, plot = plot, Gplot = False)
+        r_gurobi= 0
+        # sequential assignment
+        A_sequential, r_sequential = r_a.sequential_assignment(true_ws,num_arms, N, plot = plot)
+        sol.append([reward_RL, r_pocock, r_gurobi, r_sequential])
+    df = pd.DataFrame(data = sol, columns = ['RL', 'pocock', 'gurobi', 'sequential'])
+    return df
+df = create_sample_test_all(N, thresholds,num_arms,num_strata,Gurobi_timeLimit = 1000, plot = False, num_sample = 10000 )
 
-# run heuristics (extended_pocock)
-A_pocock, r_pocock = pocock.main_pocock(true_ws, num_arms, thresholds, N, plot = False)
 
 
-# exact method (batch arrival)
-A_gurobi, r_gurobi = g_a.gurobi_assignment(true_ws, num_arms,  len(thresholds), N, timeLimit= 1000, plot = True, Gplot = False)
-
-# sequential assignment
-
-A_sequential, r_sequential = r_a.sequential_assignment(true_ws,num_arms, N, plot = True)
-
-
-print(f'rewards: \n actor_critic: \t {reward_RL} \n pocock: \t {r_pocock} \n Gurobi: \t {r_gurobi} \n sequential: \t {r_sequential}')
+dg2 = df['RL'] <= df['pocock']
+dg2[dg2 == True].shape
+chart = sns.boxplot(data= df[['RL', 'pocock', 'sequential']])
+plt.savefig('comparison.PNG')

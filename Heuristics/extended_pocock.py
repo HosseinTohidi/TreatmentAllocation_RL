@@ -104,7 +104,7 @@ def main_pocock(true_ws, num_arms, thresholds, N, plot = False):
         else:
             assign = extended_pocock(np.array(true_ws)[:n+1,0,:],num_arms,A,thresholds)
             A.append(assign)
-    reward = myEnv.find_wd(true_ws, A, plot= True, figure_name = 'pockock')
+    reward = myEnv.find_wd(true_ws, A, plot= plot, figure_name = 'pockock')
     return A, reward
 
 if __name__ == '__main__':
