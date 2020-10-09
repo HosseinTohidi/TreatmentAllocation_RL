@@ -10,8 +10,8 @@ from itertools import combinations
 import itertools
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-
+from numpy.linalg import norm
+from scipy.linalg import sqrtm    
 
 def extend_state(state, true_ws, thresholds):
     extended_state = []
@@ -20,6 +20,7 @@ def extend_state(state, true_ws, thresholds):
         flat_state.extend(find_strata(true_ws[batch], thresholds))
         extended_state.append(flat_state)
     return extended_state
+
 
 def new_arrivals(batch_size, thresholds):
     """
@@ -30,7 +31,153 @@ def new_arrivals(batch_size, thresholds):
     for batch in range(batch_size):
         true_ws.append([np.random.choice(thresholds[cov],1)[0] for cov in range(len(thresholds))])
     return true_ws
+
+def new_arrivals2(batch_size, thresholds, N, True_WS= []):
+    """
+    return the covariates of new arrival (for each batch): 
+           true_ws -> a list of size batch_size X len(threshold)     
+    """
+    t = len(True_WS)
+    S = len(thresholds)
+    
+    Gamma = 0.5+ 3.5*np.random.random() #page 118
+
+    if t>= N - 10:
+        Gamma = 0 # page 116
         
+    if len(True_WS) <=10:
+        return(new_arrivals(batch_size, thresholds))
+    else:
+        new_true_ws = []
+        for batch in range(batch_size):
+            true_batch = np.array(True_WS)[:,batch,:]    
+            w_bar_t = 1/t * true_batch.sum(axis = 0)
+            Sigma_t = np.cov(true_batch.T) 
+            sqrt_Sigma_t = sqrtm(Sigma_t) # sqrt of negative number
+            epsilon_norm = Gamma * np.sqrt((N-t)*S)
+        
+            dim = (N-t)*S # or any positive integer
+            if dim != 0:
+                rnd = epsilon_norm* np.random.random()
+                eps = np.random.normal(size=(1,dim)) 
+                eps /= np.linalg.norm(eps, axis=1)[:, np.newaxis]
+                eps *= rnd
+            else:
+                eps = np.array([0 for i in range(S)])
+            w_tilde = w_bar_t + np.dot(sqrt_Sigma_t, eps[0][:S])
+            
+            maxList = [0 for i in range(S)]
+            minList = [np.inf for i in range(S)]
+            for i in range(S):
+                max_val = w_bar_t + np.dot(sqrt_Sigma_t, np.array([epsilon_norm  if ii == i else 0 for ii in range(S)]))
+                for j in range(S):
+                    if maxList[j] < max_val[j]:
+                        maxList[j] = max_val[j]                
+                min_val = w_bar_t + np.dot(sqrt_Sigma_t, np.array([-epsilon_norm if ii == i else 0 for ii in range(S)]))
+                for j in range(S):
+                    if minList[j] > min_val[j]:
+                        minList[j] = min_val[j] 
+            maxList, minList = np.array(maxList), np.array(minList)    
+            if Gamma != 0:
+                w_tilde = (w_tilde-minList)/(maxList-minList) 
+                
+            new_true_ws.append(w_tilde)
+            
+    return new_true_ws
+
+
+def add_randomness(True_WS, batch_size, thresholds):
+    S = len(thresholds)
+    for batch in range(batch_size):
+        true_batch = np.array(True_WS)[:,batch,:] 
+        for s in range(S):
+            max_ = true_batch.max(axis = 0)[s]
+            min_ = true_batch.min(axis = 0)[s]
+            if  max_==min_:
+                print('Warning********************************************')
+                idx = thresholds[s].index(max_)
+                len_ = len(thresholds[s])
+                possible_set = set(range(len_)) - set({idx})
+                True_WS[-1][batch][s] = np.random.choice(list(possible_set))
+    return True_WS
+                
+
+
+def new_arrivals3(batch_size, thresholds, N):
+    True_WS = []
+    for t in range(N):
+        S = len(thresholds)
+    
+        Gamma = 0.5+ 3.5*np.random.random() #page 118
+        if t>= N - 10:
+            Gamma = 0 # page 116
+        if len(True_WS) < 10:
+            True_WS.append(new_arrivals(batch_size, thresholds))
+            #return(new_arrivals(batch_size, thresholds))
+        else:
+            #modify True_WS if all equal to same number:
+            if len(True_WS) == 10:
+                True_WS = add_randomness(True_WS, batch_size, thresholds)
+                    
+            new_true_ws = []
+            for batch in range(batch_size):
+                true_batch = np.array(True_WS)[:,batch,:]    
+                w_bar_t = 1/t * true_batch.sum(axis = 0)
+                Sigma_t = np.cov(true_batch.T) 
+                sqrt_Sigma_t = sqrtm(Sigma_t) # sqrt of negative number
+                epsilon_norm = Gamma * np.sqrt((N-t)*S)
+        
+                dim = (N-t)*S # or any positive integer
+                if dim != 0:
+                    rnd = epsilon_norm* np.random.random()
+                    eps = np.random.normal(size=(1,dim)) 
+                    eps /= np.linalg.norm(eps, axis=1)[:, np.newaxis]
+                    eps *= rnd
+                else:
+                    eps = np.array([0 for i in range(S)])
+                w_tilde = w_bar_t + np.dot(sqrt_Sigma_t, eps[0][:S])                    
+                new_true_ws.append(w_tilde)
+            True_WS.append(new_true_ws)
+    
+    #modify True_ws to fit in 0 and 1 range
+    tmp = []
+    for batch in range(batch_size):
+        True_WS_batch = np.array(True_WS)[:,batch,:] 
+        max_vector = True_WS_batch.max(axis = 0)  
+        min_vector = True_WS_batch.min(axis = 0)  
+        std_vector = True_WS_batch.std(axis = 0)  
+        range_ = max_vector - min_vector
+        if 0 in range_:
+            print(max_vector)
+            print(min_vector)
+            raise Exception ("Error: devide by 0")
+        tmp.append((True_WS_batch - min_vector)/(max_vector - min_vector))
+    final_ws = []
+    for t in range(N):
+        t_list = []
+        for batch in range(batch_size):
+            t_list.append([tmp[batch][t][j] for j in range(S)])
+        final_ws.append(t_list)
+        
+    return final_ws
+
+
+
+#                maxList = [0 for i in range(S)]
+#                minList = [np.inf for i in range(S)]
+#                for i in range(S):
+#                    max_val = w_bar_t + np.dot(sqrt_Sigma_t, np.array([epsilon_norm  if ii == i else 0 for ii in range(S)]))
+#                    for j in range(S):
+#                        if maxList[j] < max_val[j]:
+#                            maxList[j] = max_val[j]                
+#                    min_val = w_bar_t + np.dot(sqrt_Sigma_t, np.array([-epsilon_norm if ii == i else 0 for ii in range(S)]))
+#                    for j in range(S):
+#                        if minList[j] > min_val[j]:
+#                            minList[j] = min_val[j] 
+#                maxList, minList = np.array(maxList), np.array(minList)    
+#                if Gamma != 0:
+#                    w_tilde = (w_tilde-minList)/(maxList-minList) 
+
 
 def find_distance(*argv):
     total_distance = 0
@@ -119,8 +266,10 @@ class trialEnv(object):
         if self.clock < self.max_time:
            return np.zeros(self.batch_size)
         else:
-           temp_reward =  np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
-           #temp_reward += np.array([self.state[batch].sum(axis =0).max() - self.state[batch].sum(axis =0).min() for batch in range(self.batch_size)])/self.num_covs
+           temp_reward = 50* np.array([reward_helper(self.assignment[batch], self.num_covs, self.num_arms) for batch in range(self.batch_size)])
+#           temp_reward += np.array([self.state[batch].sum(axis =0).max() - self.state[batch].sum(axis =0).min() for batch in range(self.batch_size)])/self.num_covs
+           temp_reward += 1* np.array([abs(self.state[batch].sum(axis =0) -  self.num_covs*self.max_time/ self.num_arms).sum() for batch in range(self.batch_size)])/self.num_covs
+
            return -1 * temp_reward #
         
     def step(self, actions, true_ws): # actions : 1 X batch_size 
@@ -175,10 +324,12 @@ def find_wd(true_ws, A, plot= False, figure_name='myPlt'):
     total_dist = 0
     for cov in range(num_covs):
         total_dist += find_distance([np.array(sol[arm])[:,cov] for arm in range(num_arms)])
-   # total_dist += np.array(A).sum(axis = 0).max() - np.array(A).sum(axis = 0).min()
+    #total_dist += np.array(A).sum(axis = 0).max() - np.array(A).sum(axis = 0).min()
+    total_dist = 50* total_dist + abs(np.array(A).sum(axis = 0) - len(A)/num_arms).sum()
     if plot:
         myPlot(A, np.array(true_ws)[:,0,:], num_arms, figure_name)  
     return total_dist
+
 
 
 

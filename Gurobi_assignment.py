@@ -43,17 +43,17 @@ def gurobi_assignment(true_ws, num_arms, num_covs, N, timeLimit, plot = False, G
     
     model = Model('Assignment problem using Wasserstein Distance')
     x = model.addVars(I,P, name='X', vtype= GRB.BINARY)
-    d = model.addVar(name='d', vtype= GRB.CONTINUOUS)
+    d = model.addVars(P,Q,S, name='d', vtype= GRB.CONTINUOUS)
     z = model.addVars(I,J,P,Q,S, name='Z', vtype= GRB.BINARY)
     #constraints
-    model.addConstrs((d >= quicksum(D[i,j,s]*z[i,j,p,q,s] for i in I for j in J) for p in P for q in Q for s in S if p!=q ),'c0')
+    model.addConstrs((d[p,q,s] >= quicksum(D[i,j,s]*z[i,j,p,q,s] for i in I for j in J) for p in P for q in Q for s in S if p!=q ),'c0')
     model.addConstrs((x[i,p]+x[j,q] >= 2 * z[i,j,p,q,s] for i in I for j in J for p in P for q in Q for s in S),'c1')
     model.addConstrs(((num_arms-1) * x[i,p] == quicksum(z[i,j,p,q,s] for j in J for q in Q if i!=j and p!=q) for i in I for p in P for s in S),'c2')
     model.addConstrs((quicksum(x[i,p] for p in P) == 1 for i in I),'c3')
     model.addConstrs((quicksum(x[i,p] for i in I) == N//num_arms for p in P),'c4')
     model.addConstrs((quicksum(z[i,j,p,q,s] for j in J if i!=j ) <= 1 for i in I for p in P for q in Q for s in S if q!=p ),'c5')
     model.addConstrs((z[i,j,p,q,s] == z[j,i,q,p,s] for i in I for j in J for p in P for q in Q for s in S if q!=p),'c6')
-    model.setObjective(1.0/(N//num_arms) * d  , GRB.MINIMIZE)
+    model.setObjective(1.0/(2*N//num_arms) * quicksum(d[p,q,s] for p in P for q in Q for s in S)  , GRB.MINIMIZE)
     model.update()
     model.write('treatment.lp')
     model.Params.timeLimit =  timeLimit

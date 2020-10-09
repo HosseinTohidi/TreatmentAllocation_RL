@@ -15,3 +15,12 @@ def sequential_assignment(true_ws,num_arms, N,plot = False):
     reward = myEnv.find_wd(true_ws, A.tolist(), plot = plot,figure_name='sequential_result')
 
     return A, reward
+
+def random_assignment(true_ws,num_arms, N,plot = False):
+    A = np.zeros([N, num_arms])
+    for i in range(N):
+        idx = np.random.randint(num_arms)
+        A[i, idx] = 1
+    reward = myEnv.find_wd(true_ws, A.tolist(), plot = plot,figure_name='random_result')
+
+    return A, reward
