@@ -18,7 +18,9 @@ nn = []
 for i in range(len(aa)):
     if aa[i]<= bb[i]:
         nn.append(aa[i])
-    elif np.random.random()<=0.7:
+    elif aa[i]>np.mean(aa) and np.random.random()<=0.5:
+        nn.append(aa[i])
+    elif np.random.random()<=0.3:
         nn.append(aa[i])
     else:
         nn.append(bb[i])
@@ -27,5 +29,5 @@ for i in range(len(aa)):
 sum(nn<=bb)
 nn
 aa
-sum(nn==aa)        
+sum(nn==bb)        
 df['RL'] = nn

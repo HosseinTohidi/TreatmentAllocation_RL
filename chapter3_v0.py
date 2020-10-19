@@ -253,7 +253,7 @@ def run_training(budget):
 save_model_check = False
 load_model_check = False
 
-def save_model(state, filename = 'model_weight50_2objs_200k_RO_set_n20.pth.tar'):
+def save_model(state, filename = 'model_weight50_2objs_750k_RO_set_n60.pth.tar'):
     print('=> Saving the model')
     torch.save(state, filename)
 
@@ -292,13 +292,27 @@ plt.legend()
 
 temp = np.array(rws)
 temp3 = temp[::100]
-temp2 = temp[temp>-5]
-plt.plot(-1*temp[:], 'b-')
-#plt.plot(np.array(torchMean), 'r-' ,label = 'critic value')
+fp =[]
+for jj in range(len(rws)-50):
+    tp = []
+    for kk in range(50):
+        tp.append(rws[jj+kk])
+    fp.append(-np.mean(tp))
+plt.plot(fp[:])
+plt.ylabel('Moving Avg reward')
+plt.xticks(np.arange(0,800000+100000,200000))
 plt.xlabel('iterations')
-plt.xticks(np.arange(0,100000+25000,25000))
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//average_50_ahead.PNG', dpi = 200)
+
+
+temp2 = temp[temp>-5]
+
+
+plt.plot(-1*temp[:], 'b-')
+plt.xlabel('iterations')
+plt.xticks(np.arange(0,800000+100000,200000))
 plt.ylabel('reward')
-plt.savefig('.//figs//final figs//2arms_RO_set_20 patients//reward.PNG', dpi = 200)
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//reward.PNG', dpi = 200)
 
 dll = pd.DataFrame(rws)
 dll.to_csv('5arms_rws.csv')
@@ -356,15 +370,6 @@ def create_sample_test_all(N, thresholds,num_arms,num_strata,Gurobi_timeLimit = 
 
         true_ws = copy.deepcopy(True_WS)
         
-        #for i in range(N):
-        #    true_ws.append(myEnv.new_arrivals(batch_size_sim, thresholds)) # generate new arrivals           
-       
-        # run simulate_optimal_RL_policy
-        new_env, A_RL, reward_RL = simulate_optimal_RL_policy(true_ws, batch_size_sim, num_strata,num_arms, N, thresholds, plot= plot)
-        #imballance_RL = np.array([new_env.state[batch].sum(axis =0).max() - new_env.state[batch].sum(axis =0).min() for batch in range(new_env.batch_size)])/new_env.num_covs
-        #imballance_RL = imballance_RL[0]
-        imballance_RL = comp_imbalance(A_RL, num_arms)
-        WD_RL = (reward_RL - m_weight* imballance_RL)/n_weight 
        
         # run heuristics (extended_pocock)
         A_pocock, r_pocock = pocock.main_pocock(true_ws, num_arms, thresholds, N, plot = plot)
@@ -388,24 +393,35 @@ def create_sample_test_all(N, thresholds,num_arms,num_strata,Gurobi_timeLimit = 
         A_sequential, r_sequential = r_a.sequential_assignment(true_ws,num_arms, N, plot = plot)
         imballance_sequential = comp_imbalance(A_sequential,num_arms)
         WD_sequential = (r_sequential - m_weight*imballance_sequential)/n_weight
-
         
         # completely random
         A_random, r_random = r_a.random_assignment(true_ws,num_arms, N, plot = plot)
         imballance_random = comp_imbalance(A_random,num_arms)
         WD_random = (r_random - m_weight*imballance_random)/n_weight
-
+        
+        # run RL
+        new_env, A_RL, reward_RL = simulate_optimal_RL_policy(true_ws, batch_size_sim, num_strata,num_arms, N, thresholds, plot= plot)
+        imballance_RL = comp_imbalance(A_RL, num_arms)
+        WD_RL = (reward_RL - m_weight* imballance_RL)/n_weight 
 
         # CA_RO
         A_RO, r_RO = CA_RO.CA_RO(true_ws, num_arms, N, plot = plot)
         imballance_RO = comp_imbalance(A_RO,num_arms)
         WD_RO = (r_RO - m_weight*imballance_RO)/n_weight
 
+        if r_RO > reward_RL:
+            global cc 
+            cc+=1
+            if plot:
+                myEnv.myPlot(A_RL, np.array(true_ws)[:,0,:], num_arms, f'RL{reward_RL}')  
+                myEnv.myPlot(A_RO, np.array(true_ws)[:,0,:], num_arms, f'CA_RO{r_RO}')  
+            
 
         sol.append([WD_RL, WD_pocock, WD_kk, r_gurobi, WD_sequential, WD_random, WD_RO, imballance_RL, imballance_pocock, imballance_kk,imballance_random, imballance_RO])
         
     df = pd.DataFrame(data = sol, columns = ['RL', 'pocock', 'kk', 'gurobi', 'sequential', 'random','CA_RO','imballance_RL', 'imballance_pocock', 'imballance_kk','imballance_random', "imballance_CA_RO"])
     return df
+cc = 0 
 df = create_sample_test_all(N, thresholds,num_arms,num_strata,Gurobi_timeLimit = 100, plot = False, num_sample = 100 )
 
 df['new_RL']     = n_weight * df['RL'] + m_weight*df['imballance_RL']
@@ -463,23 +479,23 @@ chart = sns.boxplot(data= df[['RL','CA_RO']])
 chart = sns.boxplot(data= df[['new_RL','new_CA_RO']])
 plt.xticks(np.arange(2), ['RL','CA_RO'])
 plt.ylabel('Total reward')
-plt.savefig('.//figs//final figs//2arms_RO_set_20 patients//2arms_new_only_caro_and_RL_total_reward.PNG')
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//2arms_new_only_caro_and_RL_total_reward.PNG')
 
-chart = sns.boxplot(data= df[['new_RL','new_CA_RO','new_pocock', 'new_random','new_kk']]) #
-plt.xticks(np.arange(5), ['RL','CA_RO','Pocock', 'Random','KK'])  #
+chart = sns.boxplot(data= df[['new_RL','new_CA_RO','new_pocock', 'new_random']]) # ,'new_kk'
+plt.xticks(np.arange(4), ['RL','CA_RO','Pocock', 'Random'])  #,'KK'
 plt.ylabel('Total reward')
-plt.savefig('.//figs//final figs//2arms_RO_set_20 patients//2arms_new_total_reward.PNG')
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//2arms_new_total_reward.PNG')
 
 
-chart = sns.boxplot(data= df[['RL','CA_RO','pocock', 'random','kk']]) #
-plt.xticks(np.arange(5), ['RL','CA_RO','Pocock', 'Random','KK']) #
+chart = sns.boxplot(data= df[['RL','CA_RO','pocock', 'random']]) #,'kk'
+plt.xticks(np.arange(4), ['RL','CA_RO','Pocock', 'Random']) #,'KK'
 plt.ylabel('Total Wasserstein Distance')
-plt.savefig('.//figs//final figs//2arms_RO_set_20 patients//2arms_wd.PNG')
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//2arms_wd.PNG')
 
-chart = sns.boxplot(data= df[['imballance_RL', 'imballance_CA_RO','imballance_pocock', 'imballance_random', 'imballance_kk']]) #
-plt.xticks(np.arange(5), ['RL','CA_RO','Pocock', 'Random', 'KK']) #
+chart = sns.boxplot(data= df[['imballance_RL', 'imballance_CA_RO','imballance_pocock', 'imballance_random']]) #, 'imballance_kk'
+plt.xticks(np.arange(4), ['RL','CA_RO','Pocock', 'Random']) #, 'KK'
 plt.ylabel('Total Imbalance')
-plt.savefig('.//figs//final figs//2arms_RO_set_20 patients//2arms_imbalance.PNG')
+plt.savefig('.//figs//final figs//2arms_RO_set_60_patients_3arms//2arms_imbalance.PNG')
 
 
 
